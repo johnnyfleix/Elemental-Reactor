@@ -5,7 +5,7 @@ A 2D physics sandbox demonstrating emergent elemental interactions.
 ## Import Instructions
 
 1. Unzip this archive anywhere on your machine.
-2. Open **Godot 4.2+** (use the same minor version or newer).
+2. Open **Godot 4.6+**.
 3. In the Project Manager, click **Import**.
 4. Navigate to the unzipped folder and select `project.godot`.
 5. Click **Import & Edit**. Godot will import assets automatically.
