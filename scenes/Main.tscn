@@ -1,0 +1,57 @@
+[gd_scene format=3 uid="uid://dq0ejqw1x1a0u"]
+
+[ext_resource type="Script" uid="uid://db7wr8be5pqdm" path="res://scripts/Main.gd" id="1_main"]
+[ext_resource type="Script" uid="uid://cwnih8su868bs" path="res://scripts/Spawner.gd" id="2_spawner"]
+
+[node name="Main" type="Node2D" unique_id=1566785775]
+script = ExtResource("1_main")
+
+[node name="Background" type="ColorRect" parent="." unique_id=1739692007]
+offset_right = 1366.0
+offset_bottom = 768.0
+color = Color(0.09, 0.09, 0.12, 1)
+
+[node name="Walls" type="Node2D" parent="." unique_id=1070440129]
+
+[node name="ElementContainer" type="Node2D" parent="." unique_id=2118244028]
+
+[node name="Spawner" type="Node2D" parent="." unique_id=780818588]
+script = ExtResource("2_spawner")
+
+[node name="UI" type="CanvasLayer" parent="Spawner" unique_id=414677658]
+
+[node name="SelectionPanel" type="HBoxContainer" parent="Spawner/UI" unique_id=2034159375]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 670.0
+offset_bottom = -10.0
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="WoodButton" type="Button" parent="Spawner/UI/SelectionPanel" unique_id=1620479457]
+custom_minimum_size = Vector2(140, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "🪵  Wood"
+
+[node name="FireButton" type="Button" parent="Spawner/UI/SelectionPanel" unique_id=1081675487]
+custom_minimum_size = Vector2(140, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "🔥  Fire"
+
+[node name="WaterButton" type="Button" parent="Spawner/UI/SelectionPanel" unique_id=2065730637]
+custom_minimum_size = Vector2(140, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "💧  Water"
+
+[node name="MetalButton" type="Button" parent="Spawner/UI/SelectionPanel" unique_id=537983174]
+custom_minimum_size = Vector2(140, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "⚙️  Metal"
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=16012493]
+anchor_mode = 0

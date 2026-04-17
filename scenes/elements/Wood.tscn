@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://clfk2j4y5nfaw"]
+
+[ext_resource type="Script" uid="uid://dyon35f3pn6um" path="res://scripts/Flammable.gd" id="1_flammable"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wood"]
+size = Vector2(28, 28)
+
+[node name="Wood" type="RigidBody2D" unique_id=65863351]
+collision_layer = 2
+script = ExtResource("1_flammable")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1850619176]
+shape = SubResource("RectangleShape2D_wood")
+
+[node name="ColorRect" type="ColorRect" parent="." unique_id=1216105819]
+offset_left = -14.0
+offset_top = -14.0
+offset_right = 14.0
+offset_bottom = 14.0
+color = Color(0.55, 0.35, 0.15, 1)
+
+[node name="BurnTimer" type="Timer" parent="." unique_id=698291487]
+wait_time = 2.0
+one_shot = true

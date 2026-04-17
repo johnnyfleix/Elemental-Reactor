@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://cih5bgfegwlso"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_jdfux"]
+size = Vector3(60, 2, 60)
+
+[sub_resource type="BoxMesh" id="BoxMesh_jdfux"]
+size = Vector3(60, 2, 60)
+
+[node name="Main" type="Node" unique_id=1992316572]
+
+[node name="Ground" type="StaticBody3D" parent="." unique_id=2120450431]
+metadata/_edit_group_ = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=1608622238]
+shape = SubResource("BoxShape3D_jdfux")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=422680033]
+mesh = SubResource("BoxMesh_jdfux")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=20636089]
+transform = Transform3D(1, 0, 0, 0, 0.44117695, 0.8974201, 0, -0.8974201, 0.44117695, 0, 16.620289, 0)
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1209013191]
+transform = Transform3D(1, 0, 0, 0, 0.67904425, 0.7340974, 0, -0.7340974, 0.67904425, 0, 15.60261, 33.296486)
