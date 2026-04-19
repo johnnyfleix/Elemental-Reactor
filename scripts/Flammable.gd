@@ -8,7 +8,7 @@ const NORMAL_MODULATE: Color = Color.WHITE
 
 var _is_burning: bool = false
 
-@onready var _sprite: ColorRect = $ColorRect
+@onready var _sprite: Sprite2D = $Sprite2D
 @onready var _burn_timer: Timer = $BurnTimer
 
 
@@ -22,7 +22,7 @@ func ignite() -> void:
 	if _is_burning:
 		return
 	_is_burning = true
-	_sprite.color = BURNING_MODULATE
+	_sprite.modulate = BURNING_MODULATE
 	_burn_timer.start()
 
 

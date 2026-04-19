@@ -1,35 +1,29 @@
-[gd_scene load_steps=5 format=3 uid="uid://elemental_metal"]
+[gd_scene format=3 uid="uid://bfxjdp4lu1bic"]
 
-[ext_resource type="Script" path="res://scripts/Conductor.gd" id="1_conductor"]
+[ext_resource type="Script" uid="uid://jwr4fd3pqfa" path="res://scripts/Conductor.gd" id="1_conductor"]
+[ext_resource type="Texture2D" uid="uid://dqi7nw4v00rs" path="res://Assets/PNGs/terrain_purple_block_bottom.png" id="2_go031"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_metal"]
-size = Vector2(36, 36)
+size = Vector2(127, 128)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_conductor_area"]
-radius = 52.0
+radius = 71.25307
 
-[node name="Metal" type="RigidBody2D"]
+[node name="Metal" type="RigidBody2D" unique_id=1596859066]
 collision_layer = 2
-collision_mask = 1
 mass = 5.0
-gravity_scale = 1.0
 script = ExtResource("1_conductor")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=197876272]
+texture = ExtResource("2_go031")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1990575915]
+position = Vector2(0.5, 1)
 shape = SubResource("RectangleShape2D_metal")
 
-[node name="ColorRect" type="ColorRect" parent="."]
-offset_left = -18.0
-offset_top = -18.0
-offset_right = 18.0
-offset_bottom = 18.0
-color = Color(0.55, 0.55, 0.6, 1)
-
-[node name="ConductorArea" type="Area2D" parent="."]
+[node name="ConductorArea" type="Area2D" parent="." unique_id=2066295340]
 collision_layer = 5
 collision_mask = 3
-monitorable = true
-monitoring = true
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="ConductorArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ConductorArea" unique_id=1473857563]
 shape = SubResource("CircleShape2D_conductor_area")

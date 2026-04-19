@@ -1,5 +1,4 @@
-res://scripts/HeatSource.gd
-res://scripts/Conductor.gd
-res://scripts/Extinguisher.gd
-res://scripts/Flammable.gd
 res://scenes/elements/Wood.tscn
+res://scripts/Flammable.gd
+res://scenes/elements/Metal.tscn
+res://scripts/Conductor.gd

@@ -40,16 +40,22 @@ A 2D physics sandbox demonstrating emergent elemental interactions.
 | 4 | water_area | Water's WaterArea (Area2D) |
 | 5 | conductor_area | Metal's ConductorArea (Area2D) |
 
-## Replacing Placeholder Sprites
+## Sprites and Assets
 
-Each element uses a `ColorRect` as a placeholder. To swap in your Krita sprites:
+The project now includes an `Assets/` directory for textures. Some elements have been upgraded from `ColorRect` placeholders to `Sprite2D` nodes:
 
-1. Open the element scene (e.g. `scenes/elements/Wood.tscn`).
+- **Wood**: Uses `block_empty.png`.
+- **Metal**: Uses `terrain_purple_block_bottom.png`.
+
+### Replacing Remaining Placeholders
+
+For elements still using `ColorRect` (like Fire and Water):
+
+1. Open the element scene (e.g. `scenes/elements/Fire.tscn`).
 2. Delete the `ColorRect` node.
-3. Add a `Sprite2D` node in its place.
-4. Assign your spritesheet texture in the Inspector.
-5. In `Flammable.gd`, change `@onready var _sprite : ColorRect` to `Sprite2D`
-   and replace `.color =` with `.modulate =`.
+3. Add a `Sprite2D` node (name it `Sprite2D` to match the script).
+4. Assign your texture in the Inspector.
+5. Ensure the script (e.g., `HeatSource.gd`) references `Sprite2D` and uses `modulate` for color changes.
 
 ## Project Structure
 
@@ -63,6 +69,9 @@ scenes/
     Fire.tscn
     Water.tscn
     Metal.tscn
+  Protoype/
+    3D/
+      main.tscn
 scripts/
   Main.gd
   Spawner.gd
@@ -71,3 +80,8 @@ scripts/
   Extinguisher.gd
   Conductor.gd
 ```
+
+---
+
+**Next Commit Message:**
+`feat: integrate sprites for Wood and Metal, add Assets folder, and initialize 3D prototype`

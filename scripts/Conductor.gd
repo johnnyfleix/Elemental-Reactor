@@ -8,7 +8,7 @@ var _is_heated: bool = false
 var _heat_soak_timer: float = 0.0
 
 @onready var _conductor_area: Area2D = $ConductorArea
-@onready var _sprite: ColorRect = $ColorRect
+@onready var _sprite: Sprite2D = $Sprite2D
 
 
 func start_conducting() -> void:
@@ -16,14 +16,14 @@ func start_conducting() -> void:
 	_heat_soak_timer = 0.0
 	# Tint metal red-hot to give visual feedback.
 	var tween := create_tween()
-	tween.tween_property(_sprite, "color", Color(0.9, 0.2, 0.1), HEAT_SOAK_TIME)
+	tween.tween_property(_sprite, "modulate", Color(0.9, 0.2, 0.1), HEAT_SOAK_TIME)
 
 
 func stop_conducting() -> void:
 	_is_heated = false
 	_heat_soak_timer = 0.0
 	var tween := create_tween()
-	tween.tween_property(_sprite, "color", Color(0.55, 0.55, 0.6), 1.0)
+	tween.tween_property(_sprite, "modulate", Color(0.55, 0.55, 0.6), 1.0)
 
 
 func _physics_process(delta: float) -> void:
