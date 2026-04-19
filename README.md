@@ -82,6 +82,3 @@ scripts/
 ```
 
 ---
-
-**Next Commit Message:**
-`feat: integrate sprites for Wood and Metal, add Assets folder, and initialize 3D prototype`
