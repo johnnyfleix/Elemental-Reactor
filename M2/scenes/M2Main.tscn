@@ -1,0 +1,109 @@
+[gd_scene format=3 uid="uid://m80on5pgxwtu"]
+
+[ext_resource type="Script" uid="uid://bw20gy4ncl1so" path="res://M2/scripts/CAGrid.gd" id="3_cagrid"]
+[ext_resource type="Script" uid="uid://by8xns5yvfr4x" path="res://M2/scripts/CARenderer.gd" id="4_carenderer"]
+[ext_resource type="Script" uid="uid://bbbr125yg4dlp" path="res://M2/scripts/M2Spawner.gd" id="5_m2spawner"]
+[ext_resource type="Script" uid="uid://c4oqmqa1eq6us" path="res://M2/scripts/CABenchmark.gd" id="6_benchmark"]
+[ext_resource type="Script" uid="uid://b3gi1eb4v8ayp" path="res://M2/scripts/M2Main.gd" id="7_m2main"]
+
+[node name="M2Main" type="Node2D" unique_id=1689516018]
+script = ExtResource("7_m2main")
+
+[node name="Background" type="ColorRect" parent="." unique_id=1909858771]
+offset_right = 1280.0
+offset_bottom = 720.0
+color = Color(0.06, 0.06, 0.08, 1)
+
+[node name="CAGrid" type="Node2D" parent="." unique_id=865272078]
+script = ExtResource("3_cagrid")
+
+[node name="CARenderer" type="Node2D" parent="." unique_id=1914072929]
+script = ExtResource("4_carenderer")
+
+[node name="TextureRect" type="TextureRect" parent="CARenderer" unique_id=1293302230]
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+
+[node name="Walls" type="Node2D" parent="." unique_id=714396180]
+
+[node name="ElementContainer" type="Node2D" parent="." unique_id=1154834626]
+
+[node name="M2Spawner" type="Node2D" parent="." unique_id=1603721458]
+script = ExtResource("5_m2spawner")
+
+[node name="UI" type="CanvasLayer" parent="M2Spawner" unique_id=1003527755]
+
+[node name="SelectionPanel" type="HBoxContainer" parent="M2Spawner/UI" unique_id=37574897]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 668.0
+offset_bottom = -8.0
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="WoodButton" type="Button" parent="M2Spawner/UI/SelectionPanel" unique_id=1068881232]
+custom_minimum_size = Vector2(130, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "🪵 Wood"
+
+[node name="FireButton" type="Button" parent="M2Spawner/UI/SelectionPanel" unique_id=534298747]
+custom_minimum_size = Vector2(130, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "🔥 Fire"
+
+[node name="WaterButton" type="Button" parent="M2Spawner/UI/SelectionPanel" unique_id=669556940]
+custom_minimum_size = Vector2(130, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "💧 Water"
+
+[node name="MetalButton" type="Button" parent="M2Spawner/UI/SelectionPanel" unique_id=1463614428]
+custom_minimum_size = Vector2(130, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "⚙️ Metal"
+
+[node name="EraserButton" type="Button" parent="M2Spawner/UI/SelectionPanel" unique_id=997855910]
+custom_minimum_size = Vector2(130, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "🧹 Erase (E)"
+
+[node name="BrushLabel" type="Label" parent="M2Spawner/UI" unique_id=1016573391]
+offset_left = 20.0
+offset_top = 630.0
+offset_right = 200.0
+offset_bottom = 655.0
+theme_override_font_sizes/font_size = 13
+text = "Brush size:"
+
+[node name="BrushSlider" type="HSlider" parent="M2Spawner/UI" unique_id=75115969]
+offset_left = 110.0
+offset_top = 628.0
+offset_right = 320.0
+offset_bottom = 655.0
+min_value = 1.0
+max_value = 8.0
+value = 2.0
+
+[node name="HintLabel" type="Label" parent="M2Spawner/UI" unique_id=1745178847]
+modulate = Color(0.7, 0.7, 0.7, 1)
+offset_left = 340.0
+offset_top = 628.0
+offset_right = 800.0
+offset_bottom = 655.0
+theme_override_font_sizes/font_size = 12
+text = "Left-click: paint CA  |  Right-click: spawn M1 RigidBody2D  |  E: erase"
+
+[node name="BenchmarkUI" type="CanvasLayer" parent="." unique_id=1038112760]
+
+[node name="BenchmarkLabel" type="Label" parent="BenchmarkUI" unique_id=1556727711]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 300.0
+offset_bottom = 140.0
+script = ExtResource("6_benchmark")

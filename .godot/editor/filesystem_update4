@@ -1,4 +1,1 @@
-res://scenes/elements/Wood.tscn
-res://scripts/Flammable.gd
-res://scenes/elements/Metal.tscn
-res://scripts/Conductor.gd
+res://M2/scripts/M2Main.gd
