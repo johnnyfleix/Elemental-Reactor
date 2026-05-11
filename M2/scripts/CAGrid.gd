@@ -1,61 +1,55 @@
 # CAGrid.gd
 # The heart of M2: a 100×100 Cellular Automaton grid with:
-#   - Double-buffer update pattern (read from _front, write to _back, then swap)
+#   - Single-buffer update pattern with PackedByteArray visited mask
 #   - Per-element propagation rules (fire spread, water flow, smoke rise)
 #   - Spatial index bridge: RigidBody2D positions → CA cell writes
 #   - Signal emission for the renderer and M1 element system
 #
 # PERFORMANCE DESIGN:
-#   - All rules run in a single O(COLS*ROWS) pass per tick.
-#   - No per-cell Node or signal — pure data array iteration.
-#   - Update runs on a Timer (not _process) at a fixed CA tick rate,
-#     decoupled from the render framerate.
-#   - The "updated" flag prevents a cell being processed twice per tick
-#     when fluid movement cascades.
+#   - SINGLE BUFFER: cells are modified in-place each tick.
+#     A PackedByteArray _visited mask (1 byte/cell, fill(0) via C memset)
+#     replaces the old double-buffer scheme.  This eliminates _clear_back(),
+#     which was copying 10,000 CACell objects every tick (~1.4 ms alone).
+#   - INCREMENTAL fire counter: _fire_count is ±1'd inside each rule,
+#     removing the separate O(n) fire-count scan after the tick.
+#   - EMPTY early-exit + inlined _idx: skips ~70% of cells cheaply.
+#   - All hot loops use while instead of range() to avoid Array allocation.
 #
 # Attach to: Node2D named "CAGrid" inside M2/scenes/M2Main.tscn
 class_name CAGrid
 extends Node2D
 
 # ── Grid dimensions ───────────────────────────────────────────────────────────
-const COLS        : int   = 100
-const ROWS        : int   = 100
-const TICK_RATE   : float = 1.0 / 60.0  # Target: 60 CA ticks/sec
+const COLS: int = 100
+const ROWS: int = 100
+const TICK_RATE: float = 1.0 / 60.0 # Target: 60 CA ticks/sec
 
 # ── Cell size in world pixels ─────────────────────────────────────────────────
-# With a 1280×720 viewport the grid occupies the full play area.
-# CELL_W = 1280/100 = 12.8,  CELL_H = 720/100 = 7.2
-var cell_w : float
-var cell_h : float
+var cell_w: float
+var cell_h: float
 
-# ── Double-buffer ─────────────────────────────────────────────────────────────
-# _front = current state (read-only during tick)
-# _back  = next state (written during tick)
-# After the tick, front and back are swapped by reference — zero copying.
-var _front : Array  # Array[CACell], size COLS*ROWS
-var _back  : Array  # Array[CACell], size COLS*ROWS
+# ── Single buffer ─────────────────────────────────────────────────────────────
+# Cells are mutated in-place.  A PackedByteArray visited mask prevents a cell
+# from being processed twice in one tick (replaces the double-buffer pattern).
+var _grid: Array # Array[CACell], size COLS*ROWS
+var _visited: PackedByteArray # 0 = unvisited this tick, 1 = already processed
 
 # ── Spatial index: maps RigidBody2D → grid cell ───────────────────────────────
-# Populated each tick by _sync_rigidbodies().
-# This lets M1 RigidBody2D objects "stamp" themselves into the CA grid,
-# creating a bridge between the two simulation layers.
-var _rb_registry : Array  # Array[RigidBody2D] — registered M1 bodies
+var _rb_registry: Array # Array[RigidBody2D]
 
 # ── Tick accumulator ──────────────────────────────────────────────────────────
-var _tick_accum    : float = 0.0
-var _tick_count    : int   = 0   # total ticks since scene load (for debug)
+var _tick_accum: float = 0.0
+var _tick_count: int = 0
 
 # ── Performance measurement ───────────────────────────────────────────────────
-var _last_tick_us  : int   = 0   # microseconds for last tick (for benchmark UI)
+var _last_tick_us: int = 0
+
+# ── Live counters ─────────────────────────────────────────────────────────────
+var _fire_count: int = 0 # Maintained incrementally — no O(n) scan needed
 
 # ── Signals ───────────────────────────────────────────────────────────────────
-## Emitted after every CA tick. CARenderer connects to this.
 signal grid_updated(front_buffer: Array)
-
-## Emitted when fire at a grid cell has burned out (for M3 MaterialEventBus).
 signal cell_burned_out(grid_pos: Vector2i)
-
-## Emitted when water extinguishes fire at a cell.
 signal cell_extinguished(grid_pos: Vector2i)
 
 
@@ -64,25 +58,24 @@ func _ready() -> void:
 	var vp := get_viewport_rect().size
 	cell_w = vp.x / float(COLS)
 	cell_h = vp.y / float(ROWS)
-
 	_init_buffers()
 	_rb_registry = []
 
 
 func _init_buffers() -> void:
-	_front = []
-	_back  = []
-	_front.resize(COLS * ROWS)
-	_back.resize(COLS * ROWS)
-	for i in range(COLS * ROWS):
-		_front[i] = CACell.new()
-		_back[i]  = CACell.new()
+	var n := COLS * ROWS
+	_grid = []
+	_grid.resize(n)
+	_visited = PackedByteArray()
+	_visited.resize(n)
+	_visited.fill(0)
+	var i := 0
+	while i < n:
+		_grid[i] = CACell.new()
+		i += 1
 
 
 # ── Main update ───────────────────────────────────────────────────────────────
-# We use _process (not _physics_process) so the CA tick rate is decoupled
-# from Godot's physics step. This prevents the physics engine and CA
-# from competing for the same frame budget.
 func _process(delta: float) -> void:
 	_tick_accum += delta
 	if _tick_accum >= TICK_RATE:
@@ -93,136 +86,92 @@ func _process(delta: float) -> void:
 func _run_tick() -> void:
 	var t_start := Time.get_ticks_usec()
 
-	# Step 1: Sync RigidBody2D positions into the grid.
+	# Step 1: Stamp RigidBody2D positions into the grid.
 	_sync_rigidbodies()
 
-	# Step 2: Clear the updated flag on the back buffer.
-	_clear_back()
+	# Step 2: Reset visited mask — PackedByteArray.fill() is a C-level memset,
+	#         essentially free compared to the old 10,000-object _clear_back().
+	_visited.fill(0)
 
-	# Step 3: Iterate all cells bottom-to-top (important for gravity-driven
-	# fluids — processing bottom rows first prevents double-movement).
-	for row in range(ROWS - 1, -1, -1):
-		for col in range(COLS):
+	# Step 3: Process cells bottom-to-top (gravity order).
+	#         While loops avoid the Array allocation that range() produces.
+	var row := ROWS - 1
+	while row >= 0:
+		var col := 0
+		while col < COLS:
 			_process_cell(col, row)
-
-	# Step 4: Swap buffers. _front becomes the new authoritative state.
-	var temp := _front
-	_front = _back
-	_back = temp
+			col += 1
+		row -= 1
 
 	_tick_count += 1
 	_last_tick_us = Time.get_ticks_usec() - t_start
 
-	# Emit so CARenderer redraws.
-	grid_updated.emit(_front)
-
-
-# ── Buffer helpers ────────────────────────────────────────────────────────────
-func _clear_back() -> void:
-	# Copy front → back as the starting state, then clear update flags.
-	# This means cells that have no rule applied stay unchanged.
-	for i in range(COLS * ROWS):
-		_back[i].copy_from(_front[i])
-		_back[i].updated = false
-
-func _idx(col: int, row: int) -> int:
-	return row * COLS + col
-
-func _in_bounds(col: int, row: int) -> bool:
-	return col >= 0 and col < COLS and row >= 0 and row < ROWS
-
-
-# ── Spatial index: RigidBody2D → grid ────────────────────────────────────────
-## Call this from M2Main to register an M1 element with the CA grid.
-func register_body(body: RigidBody2D) -> void:
-	if not body in _rb_registry:
-		_rb_registry.append(body)
-
-
-## Remove a body when it queue_free()s (connect to tree_exited signal).
-func unregister_body(body: RigidBody2D) -> void:
-	_rb_registry.erase(body)
-
-
-func _sync_rigidbodies() -> void:
-	# Write each registered RigidBody2D's element type into the cell
-	# it currently occupies. This is the M1→M2 bridge.
-	# We don't write into _back directly — we write into _front so the
-	# rule pass in this same tick can immediately react to the body.
-	for body in _rb_registry:
-		if not is_instance_valid(body):
-			continue
-		var gp := world_to_grid(body.global_position)
-		if not _in_bounds(gp.x, gp.y):
-			continue
-		var cell : CACell = _front[_idx(gp.x, gp.y)]
-		# Determine type from class_name — same pattern as M1.
-		if body is HeatSource:
-			cell.type = CellState.Type.FIRE
-		elif body is Flammable:
-			cell.type = CellState.Type.WOOD
-		elif body is Extinguisher:
-			cell.type = CellState.Type.WATER
-		elif body is Conductor:
-			cell.type = CellState.Type.METAL
+	# Emit so CARenderer and CABenchmark update.
+	grid_updated.emit(_grid)
 
 
 # ── Cell rule dispatch ────────────────────────────────────────────────────────
 func _process_cell(col: int, row: int) -> void:
-	var cell : CACell = _front[_idx(col, row)]
+	var idx := row * COLS + col # inlined _idx — avoids function call overhead
 
-	# Skip cells already moved this tick (prevents double-processing fluids).
-	if _back[_idx(col, row)].updated:
+	# Fast-path: skip already-visited cells (moved/written this tick).
+	if _visited[idx]:
 		return
+
+	var cell: CACell = _grid[idx]
+
+	# Fast-path: EMPTY has no rules — skip ~70% of cells immediately.
+	if cell.type == CellState.Type.EMPTY:
+		return
+
+	# Mark this cell visited before any rule fires.
+	_visited[idx] = 1
 
 	match cell.type:
 		CellState.Type.FIRE:
-			_rule_fire(col, row, cell)
+			_rule_fire(col, row, idx, cell)
 		CellState.Type.WATER:
-			_rule_water(col, row, cell)
+			_rule_water(col, row, idx, cell)
 		CellState.Type.SMOKE:
-			_rule_smoke(col, row, cell)
+			_rule_smoke(col, row, idx, cell)
 		CellState.Type.STEAM:
-			_rule_steam(col, row, cell)
+			_rule_steam(col, row, idx, cell)
 		CellState.Type.WOOD:
-			_rule_wood(col, row, cell)
-		# METAL and EMPTY: no movement rules — they stay put.
+			_rule_wood(col, row, idx, cell)
+		# METAL: no rule — stays put.
 
 
 # ── FIRE rules ────────────────────────────────────────────────────────────────
-# Fire rises slightly (gravity_scale = 0 in M1 terms).
-# It spreads to adjacent WOOD cells by incrementing their heat.
-# After FIRE_LIFETIME ticks it dies and leaves SMOKE.
-const FIRE_LIFETIME    : int = 45   # ~0.75s at 60 ticks/sec
-const FIRE_SPREAD_PROB : float = 0.55  # Probability to spread sideways each tick
+const FIRE_LIFETIME: int = 45
+const FIRE_SPREAD_PROB: float = 0.55
 
-func _rule_fire(col: int, row: int, cell: CACell) -> void:
-	var bc : CACell = _back[_idx(col, row)]
-	bc.lifetime += 1
+func _rule_fire(col: int, row: int, idx: int, cell: CACell) -> void:
+	cell.lifetime += 1
 
-	# Age out: fire burns up and produces smoke above it.
-	if bc.lifetime >= FIRE_LIFETIME:
-		bc.type     = CellState.Type.EMPTY
-		bc.lifetime = 0
-		bc.updated  = true
-		# Produce smoke one cell above if empty.
+	# Age out → become EMPTY, spawn SMOKE above.
+	if cell.lifetime >= FIRE_LIFETIME:
+		cell.type = CellState.Type.EMPTY
+		cell.lifetime = 0
+		_fire_count -= 1
 		if _in_bounds(col, row - 1):
-			var above : CACell = _back[_idx(col, row - 1)]
-			if above.type == CellState.Type.EMPTY and not above.updated:
-				above.type    = CellState.Type.SMOKE
+			var ai := (row - 1) * COLS + col
+			var above: CACell = _grid[ai]
+			if above.type == CellState.Type.EMPTY and not _visited[ai]:
+				above.type = CellState.Type.SMOKE
 				above.lifetime = 0
-				above.updated  = true
+				_visited[ai] = 1
 		cell_burned_out.emit(Vector2i(col, row))
 		return
 
-	# Rise: try to move fire upward into an empty cell.
+	# Rise into an empty cell above.
 	if _in_bounds(col, row - 1):
-		var above : CACell = _front[_idx(col, row - 1)]
-		if above.type == CellState.Type.EMPTY:
-			_move_cell(col, row, col, row - 1)
+		var ai := (row - 1) * COLS + col
+		var above: CACell = _grid[ai]
+		if above.type == CellState.Type.EMPTY and not _visited[ai]:
+			_move_cell(idx, ai, cell, above)
 			return
 
-	# Spread: heat adjacent WOOD cells. Probabilistic for organic feel.
+	# Spread heat to adjacent WOOD / extinguish with WATER.
 	var neighbours := [
 		Vector2i(col - 1, row), Vector2i(col + 1, row),
 		Vector2i(col, row + 1), Vector2i(col - 1, row - 1),
@@ -231,154 +180,188 @@ func _rule_fire(col: int, row: int, cell: CACell) -> void:
 	for nb in neighbours:
 		if not _in_bounds(nb.x, nb.y):
 			continue
-		var nb_front : CACell = _front[_idx(nb.x, nb.y)]
-		var nb_back  : CACell = _back[_idx(nb.x, nb.y)]
-		if nb_front.type == CellState.Type.WOOD:
-			nb_back.heat += 1
-			# Ignite if heat threshold reached (probabilistic).
-			if nb_back.heat >= CellState.IGNITION_TICKS[CellState.Type.WOOD]:
+		var ni = nb.y * COLS + nb.x
+		var nb_cell: CACell = _grid[ni]
+		if nb_cell.type == CellState.Type.WOOD:
+			nb_cell.heat += 1
+			if nb_cell.heat >= CellState.IGNITION_TICKS[CellState.Type.WOOD]:
 				if randf() < FIRE_SPREAD_PROB:
-					nb_back.type    = CellState.Type.FIRE
-					nb_back.heat    = 0
-					nb_back.updated = true
-		elif nb_front.type == CellState.Type.WATER:
-			# Fire meets water: extinguish both, produce steam above.
-			_back[_idx(col, row)].type    = CellState.Type.EMPTY
-			_back[_idx(col, row)].updated = true
-			nb_back.type    = CellState.Type.STEAM
-			nb_back.updated = true
+					nb_cell.type = CellState.Type.FIRE
+					nb_cell.heat = 0
+					_visited[ni] = 1
+					_fire_count += 1
+		elif nb_cell.type == CellState.Type.WATER:
+			# Fire meets water: extinguish both, produce steam.
+			cell.type = CellState.Type.EMPTY
+			_fire_count -= 1
+			nb_cell.type = CellState.Type.STEAM
+			_visited[ni] = 1
 			cell_extinguished.emit(Vector2i(col, row))
 			return
 
 
 # ── WATER rules ───────────────────────────────────────────────────────────────
-# Water falls (gravity) then spreads sideways like a fluid.
-# Uses a random left/right bias each tick for natural spread.
-const WATER_SPREAD_DIST : int = 3  # How many cells water can spread sideways
-
-func _rule_water(col: int, row: int, cell: CACell) -> void:
-	# Try fall straight down.
+func _rule_water(col: int, row: int, idx: int, cell: CACell) -> void:
+	# Fall straight down.
 	if _in_bounds(col, row + 1):
-		var below : CACell = _front[_idx(col, row + 1)]
-		if below.type == CellState.Type.EMPTY:
-			_move_cell(col, row, col, row + 1)
+		var bi := (row + 1) * COLS + col
+		var below: CACell = _grid[bi]
+		if below.type == CellState.Type.EMPTY and not _visited[bi]:
+			_move_cell(idx, bi, cell, below)
 			return
 		# Fall diagonally.
-		var dir : int = 1 if randf() > 0.5 else -1
+		var dir: int = 1 if randf() > 0.5 else -1
 		for d in [dir, -dir]:
 			if _in_bounds(col + d, row + 1):
-				var diag : CACell = _front[_idx(col + d, row + 1)]
-				if diag.type == CellState.Type.EMPTY:
-					_move_cell(col, row, col + d, row + 1)
+				var di = (row + 1) * COLS + col + d
+				var diag: CACell = _grid[di]
+				if diag.type == CellState.Type.EMPTY and not _visited[di]:
+					_move_cell(idx, di, cell, diag)
 					return
 
-	# Spread sideways if can't fall.
-	var dir : int = 1 if randf() > 0.5 else -1
+	# Spread sideways.
+	var dir: int = 1 if randf() > 0.5 else -1
 	for d in [dir, -dir]:
-		var target_col = col + d
-		if _in_bounds(target_col, row):
-			var side : CACell = _front[_idx(target_col, row)]
-			if side.type == CellState.Type.EMPTY:
-				_move_cell(col, row, target_col, row)
+		if _in_bounds(col + d, row):
+			var si = row * COLS + col + d
+			var side: CACell = _grid[si]
+			if side.type == CellState.Type.EMPTY and not _visited[si]:
+				_move_cell(idx, si, cell, side)
 				return
 
 
 # ── WOOD rules ────────────────────────────────────────────────────────────────
-# Wood doesn't move but accumulates heat from neighbouring fire.
-# When ignited it becomes FIRE.
-func _rule_wood(col: int, row: int, _cell: CACell) -> void:
-	# Heat accumulation is handled by FIRE's spread rule above.
-	# Here we just check if the cell's heat has crossed the threshold
-	# (in case heat accumulated without being consumed by the fire rule).
-	var bc : CACell = _back[_idx(col, row)]
-	if bc.heat >= CellState.IGNITION_TICKS[CellState.Type.WOOD]:
-		bc.type    = CellState.Type.FIRE
-		bc.heat    = 0
-		bc.updated = true
+func _rule_wood(col: int, row: int, idx: int, cell: CACell) -> void:
+	# Heat accumulation is handled by FIRE's spread rule.
+	# Here we catch any threshold crossing that wasn't yet consumed.
+	if cell.heat >= CellState.IGNITION_TICKS[CellState.Type.WOOD]:
+		cell.type = CellState.Type.FIRE
+		cell.heat = 0
+		_fire_count += 1
+		_visited[idx] = 1
 
 
 # ── SMOKE rules ───────────────────────────────────────────────────────────────
-# Smoke rises and dissipates after SMOKE_LIFETIME ticks.
-const SMOKE_LIFETIME : int = 90  # ~1.5s
+const SMOKE_LIFETIME: int = 90
 
-func _rule_smoke(col: int, row: int, cell: CACell) -> void:
-	var bc : CACell = _back[_idx(col, row)]
-	bc.lifetime += 1
-	if bc.lifetime >= SMOKE_LIFETIME:
-		bc.type    = CellState.Type.EMPTY
-		bc.updated = true
+func _rule_smoke(col: int, row: int, idx: int, cell: CACell) -> void:
+	cell.lifetime += 1
+	if cell.lifetime >= SMOKE_LIFETIME:
+		cell.type = CellState.Type.EMPTY
+		cell.lifetime = 0
 		return
 	# Rise.
 	if _in_bounds(col, row - 1):
-		var above : CACell = _front[_idx(col, row - 1)]
-		if above.type == CellState.Type.EMPTY:
-			_move_cell(col, row, col, row - 1)
+		var ai := (row - 1) * COLS + col
+		var above: CACell = _grid[ai]
+		if above.type == CellState.Type.EMPTY and not _visited[ai]:
+			_move_cell(idx, ai, cell, above)
 			return
-	# Drift sideways randomly if blocked.
+	# Drift sideways-upward.
 	var dir := 1 if randf() > 0.5 else -1
 	if _in_bounds(col + dir, row - 1):
-		var diag : CACell = _front[_idx(col + dir, row - 1)]
-		if diag.type == CellState.Type.EMPTY:
-			_move_cell(col, row, col + dir, row - 1)
+		var di := (row - 1) * COLS + col + dir
+		var diag: CACell = _grid[di]
+		if diag.type == CellState.Type.EMPTY and not _visited[di]:
+			_move_cell(idx, di, cell, diag)
 
 
 # ── STEAM rules ───────────────────────────────────────────────────────────────
-# Steam rises faster than smoke, dissipates sooner.
-const STEAM_LIFETIME : int = 50
+const STEAM_LIFETIME: int = 50
 
-func _rule_steam(col: int, row: int, cell: CACell) -> void:
-	var bc : CACell = _back[_idx(col, row)]
-	bc.lifetime += 1
-	if bc.lifetime >= STEAM_LIFETIME:
-		bc.type    = CellState.Type.EMPTY
-		bc.updated = true
+func _rule_steam(col: int, row: int, idx: int, cell: CACell) -> void:
+	cell.lifetime += 1
+	if cell.lifetime >= STEAM_LIFETIME:
+		cell.type = CellState.Type.EMPTY
+		cell.lifetime = 0
 		return
-	# Rise quickly — try 2 cells up.
+	# Rise quickly.
 	for step in [1, 2]:
 		if _in_bounds(col, row - step):
-			var above : CACell = _front[_idx(col, row - step)]
-			if above.type == CellState.Type.EMPTY:
-				_move_cell(col, row, col, row - step)
+			var ai = (row - step) * COLS + col
+			var above: CACell = _grid[ai]
+			if above.type == CellState.Type.EMPTY and not _visited[ai]:
+				_move_cell(idx, ai, cell, above)
 				return
-	# Drift.
+	# Drift sideways.
 	var dir := 1 if randf() > 0.5 else -1
 	if _in_bounds(col + dir, row):
-		var side : CACell = _front[_idx(col + dir, row)]
-		if side.type == CellState.Type.EMPTY:
-			_move_cell(col, row, col + dir, row)
+		var si := row * COLS + col + dir
+		var side: CACell = _grid[si]
+		if side.type == CellState.Type.EMPTY and not _visited[si]:
+			_move_cell(idx, si, cell, side)
 
 
 # ── Move helper ───────────────────────────────────────────────────────────────
-# Swaps source cell data into destination in _back, clears source in _back.
-# Sets updated=true on destination to prevent re-processing this tick.
-func _move_cell(from_col: int, from_row: int, to_col: int, to_row: int) -> void:
-	var src : CACell = _front[_idx(from_col, from_row)]
-	var dst : CACell = _back[_idx(to_col, to_row)]
+# Copies src data into dst in the single buffer, resets src to EMPTY.
+# Marks both as visited so neither is processed again this tick.
+func _move_cell(src_idx: int, dst_idx: int, src: CACell, dst: CACell) -> void:
+	dst.type = src.type
+	dst.heat = src.heat
+	dst.lifetime = src.lifetime
+	_visited[dst_idx] = 1
 
-	# Write source data to destination.
-	dst.copy_from(src)
-	dst.updated = true
-
-	# Clear source in back buffer.
-	var src_back : CACell = _back[_idx(from_col, from_row)]
-	src_back.reset()
-	src_back.updated = true
+	src.type = CellState.Type.EMPTY
+	src.heat = 0
+	src.lifetime = 0
+	# src is already marked visited (done before calling the rule).
 
 
-# ── Public API: paint cells (used by M2Spawner) ───────────────────────────────
-## Writes a cell type at a world-space position.
-## Safe to call from _process (queued for next tick via _front write).
+# ── Spatial index ─────────────────────────────────────────────────────────────
+func register_body(body: RigidBody2D) -> void:
+	if not body in _rb_registry:
+		_rb_registry.append(body)
+
+
+func unregister_body(body: RigidBody2D) -> void:
+	_rb_registry.erase(body)
+
+
+func _sync_rigidbodies() -> void:
+	for body in _rb_registry:
+		if not is_instance_valid(body):
+			continue
+		var gp := world_to_grid(body.global_position)
+		if not _in_bounds(gp.x, gp.y):
+			continue
+		var cell: CACell = _grid[gp.y * COLS + gp.x]
+		var old_type := cell.type
+		if body is HeatSource:
+			cell.type = CellState.Type.FIRE
+		elif body is Flammable:
+			cell.type = CellState.Type.WOOD
+		elif body is Extinguisher:
+			cell.type = CellState.Type.WATER
+		elif body is Conductor:
+			cell.type = CellState.Type.METAL
+		# Keep fire counter consistent.
+		if old_type != CellState.Type.FIRE and cell.type == CellState.Type.FIRE:
+			_fire_count += 1
+		elif old_type == CellState.Type.FIRE and cell.type != CellState.Type.FIRE:
+			_fire_count -= 1
+
+
+# ── Bounds check ──────────────────────────────────────────────────────────────
+func _in_bounds(col: int, row: int) -> bool:
+	return col >= 0 and col < COLS and row >= 0 and row < ROWS
+
+
+# ── Public API: paint cells ───────────────────────────────────────────────────
 func paint_cell(world_pos: Vector2, type: int) -> void:
 	var gp := world_to_grid(world_pos)
 	if _in_bounds(gp.x, gp.y):
-		var cell : CACell = _front[_idx(gp.x, gp.y)]
-		cell.type     = type
-		cell.heat     = 0
+		var idx := gp.y * COLS + gp.x
+		var cell: CACell = _grid[idx]
+		var old_type := cell.type
+		cell.type = type
+		cell.heat = 0
 		cell.lifetime = 0
-		cell.updated  = false
+		if old_type != CellState.Type.FIRE and type == CellState.Type.FIRE:
+			_fire_count += 1
+		elif old_type == CellState.Type.FIRE and type != CellState.Type.FIRE:
+			_fire_count -= 1
 
 
-## Paint a circular brush of radius `r` cells.
 func paint_circle(world_pos: Vector2, type: int, radius: int) -> void:
 	var center := world_to_grid(world_pos)
 	for dy in range(-radius, radius + 1):
@@ -405,10 +388,12 @@ func grid_to_world(grid_pos: Vector2i) -> Vector2:
 	)
 
 
-# ── Debug ─────────────────────────────────────────────────────────────────────
+# ── Debug API ─────────────────────────────────────────────────────────────────
 func get_tick_time_us() -> int:
 	return _last_tick_us
 
-
 func get_tick_count() -> int:
 	return _tick_count
+
+func get_fire_count() -> int:
+	return _fire_count

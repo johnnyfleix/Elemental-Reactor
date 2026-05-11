@@ -6,15 +6,18 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wood"]
 size = Vector2(123, 127)
 
-[node name="Wood" type="RigidBody2D" unique_id=65863351]
+[node name="Wood" type="RigidBody2D" unique_id=65863351 node_paths=PackedStringArray("_sprite")]
 collision_layer = 2
 script = ExtResource("1_flammable")
+_sprite = NodePath("Sprite2D")
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=533540128]
+scale = Vector2(0.5, 0.5)
 texture = ExtResource("2_f2kcf")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1850619176]
 position = Vector2(0.5, 0.5)
+scale = Vector2(0.5, 0.5)
 shape = SubResource("RectangleShape2D_wood")
 
 [node name="BurnTimer" type="Timer" parent="." unique_id=698291487]

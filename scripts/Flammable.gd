@@ -8,9 +8,10 @@ const NORMAL_MODULATE: Color = Color.WHITE
 
 var _is_burning: bool = false
 
-@onready var _sprite: Sprite2D = $Sprite2D
+#@onready var _sprite: Sprite2D = $Sprite2D
 @onready var _burn_timer: Timer = $BurnTimer
 
+@export var _sprite: Sprite2D
 
 func _ready() -> void:
 	_burn_timer.timeout.connect(_on_burn_complete)

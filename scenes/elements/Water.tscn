@@ -1,6 +1,6 @@
-[gd_scene load_steps=5 format=3 uid="uid://elemental_water"]
+[gd_scene format=3 uid="uid://oplge23mhlsa"]
 
-[ext_resource type="Script" path="res://scripts/Extinguisher.gd" id="1_extinguisher"]
+[ext_resource type="Script" uid="uid://cnoggugn8vnqm" path="res://scripts/Extinguisher.gd" id="1_extinguisher"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_water_body"]
 radius = 12.0
@@ -8,28 +8,25 @@ radius = 12.0
 [sub_resource type="CircleShape2D" id="CircleShape2D_water_area"]
 radius = 18.0
 
-[node name="Water" type="RigidBody2D"]
+[node name="Water" type="RigidBody2D" unique_id=1392967319]
 collision_layer = 2
-collision_mask = 1
+collision_mask = 3
 mass = 1.2
-gravity_scale = 1.0
 script = ExtResource("1_extinguisher")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=789004136]
 shape = SubResource("CircleShape2D_water_body")
 
-[node name="ColorRect" type="ColorRect" parent="."]
+[node name="ColorRect" type="ColorRect" parent="." unique_id=1124635792]
 offset_left = -12.0
 offset_top = -12.0
 offset_right = 12.0
 offset_bottom = 12.0
-color = Color(0.2, 0.5, 1.0, 0.85)
+color = Color(0.2, 0.5, 1, 0.85)
 
-[node name="WaterArea" type="Area2D" parent="."]
+[node name="WaterArea" type="Area2D" parent="." unique_id=1129140193]
 collision_layer = 4
 collision_mask = 3
-monitorable = true
-monitoring = true
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="WaterArea"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WaterArea" unique_id=581386368]
 shape = SubResource("CircleShape2D_water_area")

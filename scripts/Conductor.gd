@@ -8,9 +8,9 @@ var _is_heated: bool = false
 var _heat_soak_timer: float = 0.0
 
 @onready var _conductor_area: Area2D = $ConductorArea
-@onready var _sprite: Sprite2D = $Sprite2D
+#@onready var _sprite: Sprite2D = $Sprite2D
 
-
+@export var _sprite: Sprite2D
 func start_conducting() -> void:
 	_is_heated = true
 	_heat_soak_timer = 0.0
